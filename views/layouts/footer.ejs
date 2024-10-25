@@ -1,0 +1,52 @@
+
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript">
+        const socket = io();
+        socket.on('connect', ()=>{
+            console.log("connect")
+        })
+        socket.on('progres', (data)=>{
+            document.getElementById(data.filmId).innerText = data.msg
+        })
+        socket.on('done', (data)=>{
+            document.getElementById(data.filmId).innerText = data.msg
+        })
+        $(document).ready(function() {
+            $('#myTable').DataTable();
+            $('.download').on('click', function(event) {
+                event.preventDefault();
+                const url = $(this).data('url');
+                const channel = $(this).data('channel');
+                const filmId = $(this).data('id');
+                const namafilm = $(this).data('namafilm');
+                document.getElementById(filmId).style.display = 'none';
+                
+
+                $.ajax({
+                    url: url+filmId, // Ganti dengan endpoint yang sesuai
+                    method: 'GET',
+                    data: {  },
+                    success: function(response) {
+                        if(!response.err){
+                            document.getElementById(filmId).style.display = 'block';
+                            document.getElementById(filmId).innerText = 'waiting';
+                            socket.emit('download', {channel:channel, namaFilm:namafilm, filmId:filmId, data:response})
+                        }
+                    },
+                    error: function(err) {
+                        document.getElementById(filmId).style.display = 'block';
+                        console.error('Download failed:', err);
+                    }
+                    });
+                });
+        });
+    </script>
+</body>
+</html>
