@@ -2,6 +2,15 @@ const ffmpeg = require('fluent-ffmpeg');
 const axios = require('axios');
 const fs = require('fs').promises; // Menggunakan fs.promises untuk operasi asinkron
 const path = require('path');
+const express = require('express');
+
+const app = express();
+
+app.use('/shortwave', require('./router/shortwave'));
+
+app.listen(3000, ()=>{
+    console.log("serv runn")
+})
 
 const data = [{"chapter_id":"6718ebe070818cb6ab0964aa","chapter_index":1,"chapter_name":"E01","is_free":1},{"chapter_id":"6718eeab12a132519acafdc8","chapter_index":2,"chapter_name":"E02","is_free":1}];
 
@@ -122,4 +131,4 @@ async function loadVideoList(chapterData) {
     console.log("DONE")
 }
 
-loadVideoList(data).catch(err => console.error('Error:', err));
+// loadVideoList(data).catch(err => console.error('Error:', err));
