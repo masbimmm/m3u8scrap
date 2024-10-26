@@ -13,6 +13,9 @@
             console.log("connect")
         })
         socket.on('progres', (data)=>{
+            if(data.count){
+                document.getElementById('d-'+data.filmId).innerText = data.count
+            }
             document.getElementById(data.filmId).innerText = data.msg
         })
         socket.on('done', (data)=>{
@@ -21,14 +24,12 @@
         })
         $(document).ready(function() {
             $('#myTable').DataTable();
-            $('.download').on('click', function(event) {
-                event.preventDefault();
+            $(document).on('click', '[actions="download"]', function(e) {
                 const url = $(this).data('url');
                 const channel = $(this).data('channel');
                 const filmId = $(this).data('id');
                 const namafilm = $(this).data('namafilm');
                 document.getElementById(filmId).style.display = 'none';
-                
 
                 $.ajax({
                     url: url+filmId, // Ganti dengan endpoint yang sesuai
@@ -38,6 +39,7 @@
                         if(!response.err){
                             document.getElementById(filmId).style.display = 'block';
                             document.getElementById(filmId).innerText = 'waiting';
+                            console.log({channel:channel, namaFilm:namafilm, filmId:filmId, data:response});
                             socket.emit('download', {channel:channel, namaFilm:namafilm, filmId:filmId, data:response})
                         }
                     },
@@ -45,8 +47,11 @@
                         document.getElementById(filmId).style.display = 'block';
                         console.error('Download failed:', err);
                     }
-                    });
                 });
+
+                e.preventDefault(); 
+                return false;
+            });
         });
     </script>
 </body>

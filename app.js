@@ -21,6 +21,7 @@ app.get('/', (req, res) => {
 })
 
 app.use('/shortwave', require('./router/shortwave'));
+app.use('/dramabox', require('./router/dramabox'));
 
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
@@ -41,6 +42,22 @@ io.on('connection', (socket) => {
         });
         await fs.writeFile(filename, response.data);
         return filename;
+    }
+    
+    async function downloadOneVideo(url, chapterIndex, channel, namaFilm, filmId) {
+        let no = 0;
+        const dirPath = path.join(__dirname, channel);
+        ensureDirectoryExists(dirPath);
+        const savedirPath = path.join(dirPath, namaFilm);
+        ensureDirectoryExists(savedirPath);
+        const filePath = path.join(savedirPath, `${chapterIndex}.mp4`);
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+        });
+        socket.emit('progres', {filmId:filmId, msg:`PROGRESS => segment_${chapterIndex}.mp4`, count:successCount})
+        await fs.writeFile(filePath, response.data);
+        successCount++;
+        return chapterIndex;
     }
 
     async function mergeVideos(m3u8Url, chapterIndex, channel, namaFilm, filmId) {
@@ -133,29 +150,57 @@ io.on('connection', (socket) => {
     async function loadVideoList(filmId, chapterData, channel, namaFilm) {
         if(channel=='shortwave'){
             chapterData = chapterData.result;
-        }
-        console.log(chapterData)
-        const promises = chapterData.map(async (chapter) => {
-            console.log(chapter.chapter_id)
-            let config = {
-                method: 'get',
-                maxBodyLength: Infinity,
-                url: `http://localhost/shortwave/generatechunk.php?drama_id=${filmId}&chapter_id=${chapter.chapter_id}`,
-                headers: {
+            const promises = chapterData.map(async (chapter) => {
+                let config = {
+                    method: 'get',
+                    maxBodyLength: Infinity,
+                    url: `http://localhost/shortwave/api.php?drama_id=${filmId}&chapter_id=${chapter.chapter_id}`,
+                    headers: {
+                    }
+                };
+    
+                try {
+                    const response = await axios.request(config);
+                    const playUrl = response.data.data.play_url;
+                    return limitedMergeVideos(() => mergeVideos(playUrl, chapter.chapter_index, channel, namaFilm, filmId));
+                } catch (error) {
+                    console.error('Error:', error);
                 }
-            };
+            });
+            await Promise.all(promises);
+        }
 
-            try {
-                const response = await axios.request(config);
-                const playUrl = response.data.data.play_url;
+        if(channel=='dramabox'){
+            const promises = []; // Buat array untuk menyimpan promise
 
-                return limitedMergeVideos(() => mergeVideos(playUrl, chapter.chapter_index, channel, namaFilm, filmId));
-            } catch (error) {
-                console.error('Error:', error);
+            for (let i = 1; i <= chapterData.result.film.chapterCount; i++) {
+                let config = {
+                    method: 'get',
+                    maxBodyLength: Infinity,
+                    url: `http://localhost/dramabox/api.php?id=${filmId}&episode=${i}`,
+                    headers: {}
+                };
+            
+                // Tambahkan promise ke dalam array
+                promises.push(
+                    axios.request(config)
+                        .then(response => {
+                            const playUrl = response.data.play_url;
+                            return limitedMergeVideos(() => downloadOneVideo(playUrl, i, channel, namaFilm, filmId));
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                        })
+                );
             }
-        });
+            
+            // Tunggu semua promise selesai
+            await Promise.all(promises);
+            
+            socket.emit('done', {filmId:filmId, msg:`[DONE] => video ${namaFilm}`, count:successCount})
+        }
+        
 
-        await Promise.all(promises);
         successCount = 0; 
         failCount = 0;
     }
@@ -163,6 +208,9 @@ io.on('connection', (socket) => {
     socket.on('download', (data) => {
         if (!data.err) {
             if (data.channel == 'shortwave') {
+                loadVideoList(data.filmId, data.data, data.channel, data.namaFilm.replace(/[^a-zA-Z0-9 ]+/g, '')).catch(err => console.error('Error:', err));
+            }
+            if (data.channel == 'dramabox') {
                 loadVideoList(data.filmId, data.data, data.channel, data.namaFilm.replace(/[^a-zA-Z0-9 ]+/g, '')).catch(err => console.error('Error:', err));
             }
         }
