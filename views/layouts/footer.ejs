@@ -16,6 +16,7 @@
             document.getElementById(data.filmId).innerText = data.msg
         })
         socket.on('done', (data)=>{
+            document.getElementById('d-'+data.filmId).innerText = data.count
             document.getElementById(data.filmId).innerText = data.msg
         })
         $(document).ready(function() {

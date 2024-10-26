@@ -27,10 +27,8 @@ server.listen(PORT, () => {
 });
 
 io.on('connection', (socket) => {
-    const dataddd = [
-        {"chapter_id":"6718ebe070818cb6ab0964aa","chapter_index":1,"chapter_name":"E01","is_free":1},
-        {"chapter_id":"6718eeab12a132519acafdc8","chapter_index":2,"chapter_name":"E02","is_free":1}
-    ];
+    let successCount = 0; 
+    let failCount = 0;
 
     async function downloadM3U8(url) {
         const response = await axios.get(url);
@@ -46,6 +44,7 @@ io.on('connection', (socket) => {
     }
 
     async function mergeVideos(m3u8Url, chapterIndex, channel, namaFilm, filmId) {
+        let no = 0;
         const dirPath = path.join(__dirname, channel);
         ensureDirectoryExists(dirPath);
         const savedirPath = path.join(dirPath, namaFilm);
@@ -61,10 +60,8 @@ io.on('connection', (socket) => {
         });
 
         const segments = [];
-
         for (let i = 0; i < urls.length; i++) {
-            socket.emit('progres', {filmId:filmId, msg:`PROGRESS => segment_${chapterIndex}_${i}.ts`})
-            console.log('progres', {filmId:filmId, msg:`PROGRESS => segment_${chapterIndex}_${i}.ts`})
+            socket.emit('progres', {filmId:filmId, msg:`PROGRESS => segment_${chapterIndex}_${i}.ts`, count:successCount})
             const segmentPath = path.join(savedirPath, `segment_${chapterIndex}_${i}.ts`);
             await downloadFile(urls[i], segmentPath);
             segments.push(segmentPath);
@@ -84,13 +81,15 @@ io.on('connection', (socket) => {
                     '-f mp4'
                 ])
                 .on('end', async () => {
-                    socket.emit('done', {filmId:filmId, msg:`[DONE] => video ${chapterIndex}.mp4`})
+                    successCount++;
+                    socket.emit('done', {filmId:filmId, msg:`[DONE] => video ${chapterIndex}.mp4`, count:successCount})
                     await fs.unlink(listFilePath);
                     await Promise.all(segments.map(segment => fs.unlink(segment)));
                     resolve(); 
                 })
                 .on('error', (err) => {
-                    socket.emit('fail', {filmId:filmId, msg:`[FAIL] => video ${chapterIndex}.mp4`}, err)
+                    failCount++;
+                    socket.emit('fail', {filmId:filmId, msg:`[FAIL] => video ${chapterIndex}.mp4`, count:successCount}, err)
                     console.error(`[FAIL] => video ${chapterIndex}.mp4:`, err);
                     reject(err);
                 })
@@ -157,13 +156,14 @@ io.on('connection', (socket) => {
         });
 
         await Promise.all(promises);
-        console.log("DONE")
+        successCount = 0; 
+        failCount = 0;
     }
 
     socket.on('download', (data) => {
         if (!data.err) {
             if (data.channel == 'shortwave') {
-                loadVideoList(data.filmId, data.data, data.channel, data.namaFilm).catch(err => console.error('Error:', err));
+                loadVideoList(data.filmId, data.data, data.channel, data.namaFilm.replace(/[^a-zA-Z0-9 ]+/g, '')).catch(err => console.error('Error:', err));
             }
         }
     })
