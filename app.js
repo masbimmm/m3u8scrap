@@ -5,6 +5,7 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const vttToSrt = require('vtt-to-srt');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,6 +23,7 @@ app.get('/', (req, res) => {
 
 app.use('/shortwave', require('./router/shortwave'));
 app.use('/dramabox', require('./router/dramabox'));
+app.use('/serealPlus', require('./router/serealPlus'));
 
 server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
@@ -60,12 +62,31 @@ io.on('connection', (socket) => {
         return chapterIndex;
     }
 
-    async function mergeVideos(m3u8Url, chapterIndex, channel, namaFilm, filmId) {
+    async function convertVttToSrt(vttPath, srtPath) {
+        return new Promise((resolve, reject) => {
+            ffmpeg()
+                .input(vttPath)  // Input file VTT
+                .output(srtPath)  // Output file SRT
+                .outputOptions('-c:s srt')  // Menentukan codec subtitle
+                .on('end', () => {
+                    console.log('Conversion finished successfully!');
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error('Error during conversion:', err);
+                    reject(err);
+                })
+                .run();  // Menjalankan konversi
+        });
+    }
+
+    async function mergeVideos(m3u8Url, chapterIndex, channel, namaFilm, filmId, vttUrl) {
         let no = 0;
         const dirPath = path.join(__dirname, channel);
         ensureDirectoryExists(dirPath);
         const savedirPath = path.join(dirPath, namaFilm);
         ensureDirectoryExists(savedirPath);
+
         const m3u8Data = await downloadM3U8(m3u8Url);
         const urls = [];
         const lines = m3u8Data.split('\n');
@@ -113,6 +134,35 @@ io.on('connection', (socket) => {
                 .save(outputFile);
         });
     }
+    async function mergeVtt(m3u8Url, chapterIndex, channel, namaFilm, filmId, vttUrl) {
+        let no = 0;
+        const dirPath = path.join(__dirname, channel);
+        ensureDirectoryExists(dirPath);
+        const savedirPath = path.join(dirPath, namaFilm);
+        ensureDirectoryExists(savedirPath);
+
+        const vttPath = path.join(savedirPath, `${chapterIndex}.vtt`);
+        await downloadFile(vttUrl, vttPath); 
+        const srtPath = path.join(savedirPath, `${chapterIndex}.srt`);
+        await convertVttToSrt(vttPath, srtPath)
+
+        const filePath = path.join(savedirPath, `${chapterIndex}.mp4`);
+        const outputPath = path.join(savedirPath, `final_${chapterIndex}.mp4`);
+        return new Promise((resolve, reject) => {
+            ffmpeg(filePath)
+            .outputOptions([
+                `-vf subtitles=${srtPath}`
+            ])
+            .on('end', () => {
+                console.log('Proses penggabungan selesai!');
+            })
+            .on('error', (err) => {
+                console.error('Terjadi kesalahan: ' + err.message);
+            })
+            .save(outputPath);
+        });
+
+    }
 
     const limit = (fn, concurrency) => {
         const queue = [];
@@ -148,6 +198,56 @@ io.on('connection', (socket) => {
     }, 5); 
 
     async function loadVideoList(filmId, chapterData, channel, namaFilm) {
+        if(channel=='serealPlus'){
+            const promises = [];
+
+            for (let i = 0; i < chapterData.length; i++) { // Ubah indeks dari 1-based menjadi 0-based
+                let config = {
+                    method: 'get',
+                    maxBodyLength: Infinity,
+                    url: `http://localhost/sereal+/api.php?filmId=${filmId}&cid=${chapterData[i].id}`,
+                    headers: {}
+                };
+                promises.push(
+                    axios.request(config)
+                        .then(response => {
+                            if (response.data && 
+                                response.data.chunk && 
+                                response.data.chunk.data && 
+                                typeof response.data.chunk.data.curr !== 'undefined') {
+                                
+                                let rez = response.data.chunk.data.curr;
+                                return limitedMergeVideos(() => downloadOneVideo(rez.playerUrlInfo, rez.sequenceNo, channel, namaFilm, filmId));
+                            } else {
+                                console.log("Sequence no " + chapterData[i].sequenceNo, response.data);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                        })
+                );
+                // try {
+                //     const response = await axios.request(config); // Tunggu sampai permintaan selesai
+                //     // console.log(response.data.chunk.data);
+                //     if (response.data && 
+                //         response.data.chunk && 
+                //         response.data.chunk.data && 
+                //         typeof response.data.chunk.data.curr !== 'undefined') {
+                        
+                //         let rez = response.data.chunk.data.curr;
+                //         return limitedMergeVideos(() => downloadOneVideo(rez.playerUrlInfo, rez.sequenceNo, channel, namaFilm, filmId));
+                //     } else {
+                //         console.log("Sequence no " + chapterData[i].sequenceNo, response.data);
+                //     }
+                //     // console.log(chapterData[i].sequenceNo)
+                // } catch (error) {
+                //     console.error('Error:', error);
+                // }
+            }
+            
+            await Promise.all(promises);
+            socket.emit('done', {filmId:filmId, msg:`[DONE] => video ${namaFilm}`, count:successCount})
+        }
         if(channel=='shortwave'){
             chapterData = chapterData.result;
             const promises = chapterData.map(async (chapter) => {
@@ -161,8 +261,10 @@ io.on('connection', (socket) => {
     
                 try {
                     const response = await axios.request(config);
+                    const vtt = response.data.data.sublist[0].url;
                     const playUrl = response.data.data.play_url;
-                    return limitedMergeVideos(() => mergeVideos(playUrl, chapter.chapter_index, channel, namaFilm, filmId));
+                    // return limitedMergeVideos(() => mergeVideos(playUrl, chapter.chapter_index, channel, namaFilm, filmId, vtt));
+                    return limitedMergeVideos(() => mergeVtt(playUrl, chapter.chapter_index, channel, namaFilm, filmId, vtt));
                 } catch (error) {
                     console.error('Error:', error);
                 }
@@ -212,6 +314,17 @@ io.on('connection', (socket) => {
             }
             if (data.channel == 'dramabox') {
                 loadVideoList(data.filmId, data.data, data.channel, data.namaFilm.replace(/[^a-zA-Z0-9 ]+/g, '')).catch(err => console.error('Error:', err));
+            }
+            if(data.channel == 'serealPlus'){
+                // console.log(data)
+                if(!data.data.err && data.data.result.data && data.data.result.data.records){
+                    const result = data.data.result.data.records.map(item => ({
+                        id: item.id,
+                        sequenceNo: item.sequenceNo
+                    }));
+                    socket.emit('chapterCount', {filmId:data.filmId, count:result.length})
+                    loadVideoList(data.filmId, result, data.channel, data.namaFilm.replace(/[^a-zA-Z0-9 ]+/g, '')).catch(err => console.error('Error:', err));
+                }
             }
         }
     })

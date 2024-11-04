@@ -1,0 +1,33 @@
+<%- include("../layouts/header") %>
+    <div class="container mt-5">
+        <h2 class="mb-4">sereal+</h2>
+        <p>Bisa dicari filmnya, status download ada di folder download masing masing, dan untuk download, jangan sekaligus, kalo bisa satu satu aja, mengingat resource ini bakal bikin PCnya ngelag</p>
+        <a href="./?locale=en">(English)</a> || <a href="./?locale=zh">(Simplified Chinese)</a> || <a href="./?locale=ko">(Korean)</a> || <a href="./?locale=pt">(Portugal)</a> || <a href="./?locale=es">(Spanish)</a> || <a href="./?locale=id">(Indonesian)</a> || <a href="./?locale=ja">(Japanese)</a> || <a href="./?locale=de">(German)</a> || 
+        <table id="myTable" class="table table-striped table-bordered" style="width:100%">
+            <thead>
+                <tr>
+                    <th style="text-align: center;">Pict</th>
+                    <th style="text-align: center;">Title</th>
+                    <th style="text-align: center;">Country SUB/LANG</th>
+                    <th style="text-align: center;">Kategori</th>
+                    <th style="text-align: center;">DOWNLOADED</th>
+                    <th style="text-align: center;">Preview</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% chapters.forEach(chapter => { 
+                    chapter.records.forEach(data => {
+                %>
+                <tr>
+                    <td><img style="width: 100px" src="<%- data.url %>"></td>
+                    <td><%- data.contentName %></td>
+                    <td><span id="d-<%- data.contentId %>">-</span>/<span id="chapterCount-<%- data.contentId %>">-</span></td>
+                    <td><%- chapter.columnName %> </td>
+                    <td id="<%- data.contentId %>"><a href="#" actions="download" class="download" data-channel="serealPlus" data-namaFilm="<%- data.contentName %>" data-url="/serealPlus/" data-id="<%- data.contentId %>" >Download</a></td>
+                    <td ><a href="https://local.kenjay.my.id/serealPlus/view.php?id=<%- data.contentId %>" target="_blank">Preview</a></td>
+                </tr>
+                <% }) }); %>
+            </tbody>
+        </table>
+    </div>
+<%- include("../layouts/footer") %>

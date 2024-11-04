@@ -47,5 +47,22 @@ router.get('/:id', async (req, res) => {
         res.json({err:true, msg:error.message})
       });
 });
-
+router.get('/:id/:cid', async (req, res) => {
+  let id = req.params.id;
+  let cid = req.params.cid;
+  let config = {
+      method: 'get',
+      maxBodyLength: Infinity,
+      url: 'http://localhost/shortwave/api.php?drama_id='+id+'&chapter_id='+cid,
+      headers: {}
+    };
+    
+    axios.request(config)
+    .then((response) => {
+      res.json({err:false, result:response.data})
+    })
+    .catch((error) => {
+      res.json({err:true, msg:error.message})
+    });
+});
 module.exports = router;

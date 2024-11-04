@@ -18,6 +18,12 @@
             }
             document.getElementById(data.filmId).innerText = data.msg
         })
+        socket.on('chapterCount', (data)=>{
+            if(data.count){
+                document.getElementById('chapterCount-'+data.filmId).innerText = data.count
+            }
+            document.getElementById(data.filmId).innerText = data.msg
+        })
         socket.on('done', (data)=>{
             document.getElementById('d-'+data.filmId).innerText = data.count
             document.getElementById(data.filmId).innerText = data.msg
